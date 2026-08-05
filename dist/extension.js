@@ -51,18 +51,18 @@ const DARK_PALETTE = [
     '#e599f7' // Vivid Orchid
 ];
 const LIGHT_PALETTE = [
-    '#d73a49', // Vivid Crimson
-    '#e36209', // Vivid Burnt Orange
-    '#b08800', // Vivid Saturated Gold
-    '#22863a', // Vivid Forest Green
-    '#0086b3', // Vivid Dark Teal
-    '#005cc5', // Vivid Royal Blue
-    '#6f42c1', // Vivid Deep Purple
-    '#d023b7', // Vivid Magenta
-    '#0969da', // Vivid Deep Blue
-    '#118355', // Vivid Emerald
-    '#c05621', // Vivid Amber
-    '#805ad5' // Vivid Violet
+    '#ff0055', // Vivid Bright Crimson
+    '#ff5700', // Vivid Bright Orange
+    '#e69100', // Vivid Bright Gold
+    '#00b843', // Vivid Bright Green
+    '#00b8d4', // Vivid Bright Teal
+    '#0088ff', // Vivid Electric Blue
+    '#7928ca', // Vivid Deep Violet
+    '#ff007f', // Vivid Hot Pink
+    '#0091ff', // Vivid Bright Sky Blue
+    '#00b97c', // Vivid Mint Emerald
+    '#ff3d00', // Vivid Bright Vermilion
+    '#d946ef' // Vivid Bright Fuchsia
 ];
 let activeEditor;
 const decorationCache = new Map();
@@ -98,7 +98,8 @@ function activate(context) {
     }), vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('rainbow-html.additionalFileTypes') ||
             e.affectsConfiguration('rainbow-html.colorMode') ||
-            e.affectsConfiguration('rainbow-html.tagColors')) {
+            e.affectsConfiguration('rainbow-html.tagColors') ||
+            e.affectsConfiguration('rainbow-html.tagShadow')) {
             disposeAllDecorations();
             if (activeEditor && shouldProcessDoc(activeEditor.document)) {
                 triggerUpdateDecorations();
@@ -156,15 +157,29 @@ function getColorMode() {
     const config = vscode.workspace.getConfiguration('rainbow-html');
     return config.get('colorMode') || 'tagNameHash';
 }
+function getTagShadow() {
+    const config = vscode.workspace.getConfiguration('rainbow-html');
+    const shadow = config.get('tagShadow')?.trim() || '';
+    if (!shadow || shadow.toLowerCase() === 'none' || shadow.toLowerCase() === 'off') {
+        return '';
+    }
+    return shadow;
+}
 function getOrCreateDecorations(color) {
     const normalizedColor = color.toLowerCase();
-    let pair = decorationCache.get(normalizedColor);
+    const shadow = getTagShadow();
+    const cacheKey = shadow ? `${normalizedColor}:${shadow}` : normalizedColor;
+    let pair = decorationCache.get(cacheKey);
     if (!pair) {
+        const nameDecorationOptions = {
+            color: normalizedColor,
+            rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+        };
+        if (shadow) {
+            nameDecorationOptions.textDecoration = `none; text-shadow: ${shadow}`;
+        }
         pair = {
-            nameDecoration: vscode.window.createTextEditorDecorationType({
-                color: normalizedColor,
-                rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-            }),
+            nameDecoration: vscode.window.createTextEditorDecorationType(nameDecorationOptions),
             delimDecoration: vscode.window.createTextEditorDecorationType({
                 color: normalizedColor,
                 opacity: '1.0',
@@ -173,7 +188,7 @@ function getOrCreateDecorations(color) {
             nameRanges: [],
             delimRanges: []
         };
-        decorationCache.set(normalizedColor, pair);
+        decorationCache.set(cacheKey, pair);
     }
     return pair;
 }
