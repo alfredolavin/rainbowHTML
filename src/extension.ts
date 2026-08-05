@@ -1,27 +1,48 @@
 import * as vscode from 'vscode';
 
-type DecorationByIndex = {
-  decorationType: vscode.TextEditorDecorationType;
-  ranges: vscode.Range[];
+type ColorDecorationPair = {
+  nameDecoration: vscode.TextEditorDecorationType;
+  delimDecoration: vscode.TextEditorDecorationType;
+  nameRanges: vscode.Range[];
+  delimRanges: vscode.Range[];
 };
 
-const RAINBOW_COLORS = [
-  '#ff5555', // red
-  '#ffae42', // orange
-  '#f1fa8c', // yellow
-  '#50fa7b', // green
-  '#8be9fd', // blue (cyan-ish for contrast)
-  '#bd93f9'  // violet
+const DARK_PALETTE = [
+  '#ff5555', // Vivid Coral Red
+  '#ffb86c', // Vivid Peach Orange
+  '#f1fa8c', // Vivid Bright Yellow
+  '#50fa7b', // Vivid Neon Green
+  '#8be9fd', // Vivid Cyan / Light Blue
+  '#bd93f9', // Vivid Lavender Purple
+  '#ff79c6', // Vivid Hot Pink
+  '#00e5ff', // Vivid Electric Cyan
+  '#a6e22e', // Vivid Lime
+  '#ff922b', // Vivid Amber Orange
+  '#38d9a9', // Vivid Mint
+  '#e599f7'  // Vivid Orchid
+];
+
+const LIGHT_PALETTE = [
+  '#d73a49', // Vivid Crimson
+  '#e36209', // Vivid Burnt Orange
+  '#b08800', // Vivid Saturated Gold
+  '#22863a', // Vivid Forest Green
+  '#0086b3', // Vivid Dark Teal
+  '#005cc5', // Vivid Royal Blue
+  '#6f42c1', // Vivid Deep Purple
+  '#d023b7', // Vivid Magenta
+  '#0969da', // Vivid Deep Blue
+  '#118355', // Vivid Emerald
+  '#c05621', // Vivid Amber
+  '#805ad5'  // Vivid Violet
 ];
 
 let activeEditor: vscode.TextEditor | undefined;
-let decorations: DecorationByIndex[] = [];
-let delimiterDecorations: DecorationByIndex[] = [];
+const decorationCache = new Map<string, ColorDecorationPair>();
 let updateTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   activeEditor = vscode.window.activeTextEditor;
-  initDecorations();
 
   if (activeEditor && shouldProcessDoc(activeEditor.document)) {
     triggerUpdateDecorations();
@@ -49,8 +70,19 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidCloseTextDocument(() => {
       clearAllDecorations();
     }),
-    vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('rainbow-html.additionalFileTypes')) {
+    vscode.window.onDidChangeActiveColorTheme(() => {
+      disposeAllDecorations();
+      if (activeEditor && shouldProcessDoc(activeEditor.document)) {
+        triggerUpdateDecorations();
+      }
+    }),
+    vscode.workspace.onDidChangeConfiguration((e: vscode.ConfigurationChangeEvent) => {
+      if (
+        e.affectsConfiguration('rainbow-html.additionalFileTypes') ||
+        e.affectsConfiguration('rainbow-html.colorMode') ||
+        e.affectsConfiguration('rainbow-html.tagColors')
+      ) {
+        disposeAllDecorations();
         if (activeEditor && shouldProcessDoc(activeEditor.document)) {
           triggerUpdateDecorations();
         } else {
@@ -63,7 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  clearAllDecorations();
+  disposeAllDecorations();
 }
 
 function shouldProcessDoc(doc: vscode.TextDocument): boolean {
@@ -87,45 +119,77 @@ function shouldProcessDoc(doc: vscode.TextDocument): boolean {
   return false;
 }
 
-function initDecorations() {
-  disposeDecorations();
-  decorations = RAINBOW_COLORS.map(color => ({
-    decorationType: vscode.window.createTextEditorDecorationType({
-      color,
-      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-    }),
-    ranges: []
-  }));
-  delimiterDecorations = RAINBOW_COLORS.map(color => ({
-    decorationType: vscode.window.createTextEditorDecorationType({
-      color,
-      // Increase opacity for delimiters so they match tag name intensity
-      opacity: '1.0',
-      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-    }),
-    ranges: []
-  }));
+function getActivePalette(): string[] {
+  const kind = vscode.window.activeColorTheme.kind;
+  const isLight = kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight;
+  return isLight ? LIGHT_PALETTE : DARK_PALETTE;
 }
 
-function disposeDecorations() {
-  for (const d of decorations) {
-    d.decorationType.dispose();
+function hashTagName(name: string): number {
+  let hash = 5381;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) + hash) + name.charCodeAt(i);
   }
-  for (const d of delimiterDecorations) {
-    d.decorationType.dispose();
+  return Math.abs(hash);
+}
+
+function getManualOverrides(): Record<string, string> {
+  const config = vscode.workspace.getConfiguration('rainbow-html');
+  const rawObj = config.get<Record<string, string>>('tagColors') || {};
+  const result: Record<string, string> = {};
+  for (const key of Object.keys(rawObj)) {
+    result[key.toLowerCase()] = rawObj[key];
   }
-  decorations = [];
-  delimiterDecorations = [];
+  return result;
+}
+
+function getColorMode(): 'tagNameHash' | 'uniqueTagNames' | 'depth' {
+  const config = vscode.workspace.getConfiguration('rainbow-html');
+  return config.get<'tagNameHash' | 'uniqueTagNames' | 'depth'>('colorMode') || 'tagNameHash';
+}
+
+function getOrCreateDecorations(color: string): ColorDecorationPair {
+  const normalizedColor = color.toLowerCase();
+  let pair = decorationCache.get(normalizedColor);
+  if (!pair) {
+    pair = {
+      nameDecoration: vscode.window.createTextEditorDecorationType({
+        color: normalizedColor,
+        rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+      }),
+      delimDecoration: vscode.window.createTextEditorDecorationType({
+        color: normalizedColor,
+        opacity: '1.0',
+        rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+      }),
+      nameRanges: [],
+      delimRanges: []
+    };
+    decorationCache.set(normalizedColor, pair);
+  }
+  return pair;
 }
 
 function clearAllDecorations() {
   if (!activeEditor) return;
-  for (const d of decorations) {
-    activeEditor.setDecorations(d.decorationType, []);
+  for (const pair of decorationCache.values()) {
+    pair.nameRanges = [];
+    pair.delimRanges = [];
+    activeEditor.setDecorations(pair.nameDecoration, []);
+    activeEditor.setDecorations(pair.delimDecoration, []);
   }
-  for (const d of delimiterDecorations) {
-    activeEditor.setDecorations(d.decorationType, []);
+}
+
+function disposeAllDecorations() {
+  if (activeEditor) {
+    for (const pair of decorationCache.values()) {
+      activeEditor.setDecorations(pair.nameDecoration, []);
+      activeEditor.setDecorations(pair.delimDecoration, []);
+      pair.nameDecoration.dispose();
+      pair.delimDecoration.dispose();
+    }
   }
+  decorationCache.clear();
 }
 
 function triggerUpdateDecorations() {
@@ -143,18 +207,24 @@ function updateDecorations() {
     return;
   }
 
-  // Reset ranges
-  for (const d of decorations) d.ranges = [];
-  for (const d of delimiterDecorations) d.ranges = [];
+  // Reset ranges in existing cache
+  for (const pair of decorationCache.values()) {
+    pair.nameRanges = [];
+    pair.delimRanges = [];
+  }
 
   const text = doc.getText();
   const segments = getProcessableSegments(doc, text);
+  const palette = getActivePalette();
+  const manualOverrides = getManualOverrides();
+  const colorMode = getColorMode();
+
+  // Document-wide map for uniqueTagNames mode
+  const docTagColorMap = new Map<string, string>();
 
   // Lightweight scanner that pairs tags so opening/closing share the same color
   const rawTextElements = new Set(['script', 'style']);
-  // Track assigned color per open element and the next color to use per depth.
-  const colorStack: { name: string; colorIndex: number }[] = [];
-  const nextIndexStack: number[] = [0];
+  const colorStack: { name: string; color: string }[] = [];
 
   for (const seg of segments) {
     let pos = seg.start;
@@ -177,7 +247,7 @@ function updateDecorations() {
 
       if (!inDoctype && text.startsWith('<!DOCTYPE', pos)) {
         inDoctype = true;
-        pos += 2; // advance minimally, next branch consumes till '>'
+        pos += 2;
       }
       if (inDoctype) {
         const end = text.indexOf('>', pos);
@@ -188,8 +258,6 @@ function updateDecorations() {
       }
 
       if (text.charCodeAt(pos) === 60 /* '<' */) {
-        // Specific check for TypeScript: if the '<' is immediately preceded by an alphanumeric character,
-        // it's likely a generic type (e.g., RefObject<T>) or a comparison, not an HTML tag.
         const isTypeScript = doc.languageId === 'typescript' || doc.languageId === 'typescriptreact';
         if (isTypeScript && pos > 0) {
           const charBefore = text[pos - 1];
@@ -199,18 +267,15 @@ function updateDecorations() {
           }
         }
 
-        // Try to parse a tag
         const gt = findTagEnd(text, pos + 1, seg.end);
         if (gt === -1 || gt >= seg.end) { pos++; continue; }
         const tagText = text.slice(pos, gt + 1);
 
-        // Exclude comments and processing instructions (handled above) and <![CDATA[ ... ]]> (rare in HTML)
-        if (tagText.startsWith('<?') || tagText.startsWith('<!') && !tagText.startsWith('<!DOCTYPE')) {
+        if (tagText.startsWith('<?') || (tagText.startsWith('<!') && !tagText.startsWith('<!DOCTYPE'))) {
           pos = gt + 1;
           continue;
         }
 
-        // Extract tag name (allowing dots for Component.SubComponent)
         const isClosing = tagText.startsWith('</');
         const nameMatch = tagText.match(/^<\/?\s*([A-Za-z][A-Za-z0-9:.-]*)/);
         if (!nameMatch) {
@@ -223,32 +288,23 @@ function updateDecorations() {
         const isSelfClosing = isSelfClosingSyntax || isVoid;
 
         if (isClosing) {
-          // Match closing with the nearest same-name opening to get its color
-          let matchedColor = nextIndexStack[Math.max(0, colorStack.length)] ?? 0;
+          let matchedColor = resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap);
           for (let i = colorStack.length - 1; i >= 0; i--) {
             if (colorStack[i].name === tagName) {
-              matchedColor = colorStack[i].colorIndex;
-              colorStack.splice(i); // pop everything above including this
+              matchedColor = colorStack[i].color;
+              colorStack.splice(i);
               break;
             }
           }
-          nextIndexStack.length = colorStack.length + 1;
           addTagPieces(doc, pos, tagText, matchedColor);
           pos = gt + 1;
           continue;
         } else {
-          // Assign a color based on the next index at this depth
-          const depth = colorStack.length;
-          const parentColor = depth > 0 ? colorStack[depth - 1].colorIndex : null;
-          const startIndex = nextIndexStack[depth] ?? 0;
-          const assigned = nextDifferentColor(startIndex, parentColor);
-          addTagPieces(doc, pos, tagText, assigned);
-
-          nextIndexStack[depth] = (assigned + 1) % RAINBOW_COLORS.length;
+          const assignedColor = resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap);
+          addTagPieces(doc, pos, tagText, assignedColor);
 
           if (!isSelfClosing) {
-            colorStack.push({ name: tagName, colorIndex: assigned });
-            nextIndexStack[depth + 1] = (assigned + 1) % RAINBOW_COLORS.length;
+            colorStack.push({ name: tagName, color: assignedColor });
 
             if (rawTextElements.has(tagName)) {
               const closeIdx = text.indexOf(`</${tagName}`, gt + 1);
@@ -256,14 +312,13 @@ function updateDecorations() {
                 const closeGt = text.indexOf('>', closeIdx + 2);
                 if (closeGt !== -1 && closeGt < seg.end) {
                   const closeTagText = text.slice(closeIdx, closeGt + 1);
-                  addTagPieces(doc, closeIdx, closeTagText, assigned);
+                  addTagPieces(doc, closeIdx, closeTagText, assignedColor);
                   for (let i = colorStack.length - 1; i >= 0; i--) {
                     if (colorStack[i].name === tagName) {
                       colorStack.splice(i);
                       break;
                     }
                   }
-                  nextIndexStack.length = colorStack.length + 1;
                   pos = closeGt + 1;
                   continue;
                 }
@@ -282,26 +337,77 @@ function updateDecorations() {
 
   // Apply decorations
   if (!activeEditor) return;
-  for (const d of decorations) {
-    activeEditor.setDecorations(d.decorationType, d.ranges);
-  }
-  for (const d of delimiterDecorations) {
-    activeEditor.setDecorations(d.decorationType, d.ranges);
+  for (const pair of decorationCache.values()) {
+    activeEditor.setDecorations(pair.nameDecoration, pair.nameRanges);
+    activeEditor.setDecorations(pair.delimDecoration, pair.delimRanges);
   }
 }
 
-function addTagPieces(doc: vscode.TextDocument, startOffset: number, tagText: string, colorIdx: number) {
+function resolveTagColor(
+  tagName: string,
+  colorStack: { name: string; color: string }[],
+  palette: string[],
+  manualOverrides: Record<string, string>,
+  colorMode: 'tagNameHash' | 'uniqueTagNames' | 'depth',
+  docTagColorMap: Map<string, string>
+): string {
+  // 1. Manual Override
+  if (manualOverrides[tagName]) {
+    return manualOverrides[tagName];
+  }
+
+  const parentColor = colorStack.length > 0 ? colorStack[colorStack.length - 1].color : null;
+
+  // 2. Mode resolution
+  if (colorMode === 'uniqueTagNames') {
+    if (docTagColorMap.has(tagName)) {
+      return docTagColorMap.get(tagName)!;
+    }
+    // Pick unused color or fallback cycle
+    let candidateIndex = docTagColorMap.size % palette.length;
+    let color = palette[candidateIndex];
+    if (color === parentColor && palette.length > 1) {
+      candidateIndex = (candidateIndex + 1) % palette.length;
+      color = palette[candidateIndex];
+    }
+    docTagColorMap.set(tagName, color);
+    return color;
+  }
+
+  if (colorMode === 'depth') {
+    let index = colorStack.length % palette.length;
+    let color = palette[index];
+    if (color === parentColor && palette.length > 1) {
+      index = (index + 1) % palette.length;
+      color = palette[index];
+    }
+    return color;
+  }
+
+  // Default: tagNameHash
+  let index = hashTagName(tagName) % palette.length;
+  let color = palette[index];
+  if (color === parentColor && palette.length > 1) {
+    index = (index + 1) % palette.length;
+    color = palette[index];
+  }
+  return color;
+}
+
+function addTagPieces(doc: vscode.TextDocument, startOffset: number, tagText: string, colorHex: string) {
   if (tagText.length === 0) return;
+
+  const pair = getOrCreateDecorations(colorHex);
 
   const pushDelim = (s: number, e: number) => {
     const start = doc.positionAt(startOffset + s);
     const end = doc.positionAt(startOffset + e);
-    delimiterDecorations[colorIdx].ranges.push(new vscode.Range(start, end));
+    pair.delimRanges.push(new vscode.Range(start, end));
   };
   const pushName = (s: number, e: number) => {
     const start = doc.positionAt(startOffset + s);
     const end = doc.positionAt(startOffset + e);
-    decorations[colorIdx].ranges.push(new vscode.Range(start, end));
+    pair.nameRanges.push(new vscode.Range(start, end));
   };
 
   // '<'
@@ -458,14 +564,7 @@ function scanRangeForHtmlTemplates(full: string, start: number, end: number, out
   }
 }
 
-function nextDifferentColor(startIndex: number, forbiddenIndex: number | null): number {
-  if (forbiddenIndex === null) return startIndex % RAINBOW_COLORS.length;
-  let idx = startIndex % RAINBOW_COLORS.length;
-  if (idx === forbiddenIndex) {
-    idx = (idx + 1) % RAINBOW_COLORS.length;
-  }
-  return idx;
-}
+
 
 function findTagEnd(text: string, startPos: number, hardEnd: number): number {
   // Find '>' but treat `>` inside attribute values as text.

@@ -32,6 +32,17 @@ You can fully customize the extension via your VS Code `settings.json` or the gr
   A list of additional file extensions (e.g., `njk`) or VS Code language IDs (e.g., `nunjucks`) to actively scan for HTML tags.  
   *Default:* `["njk", "nunjucks", "php", "vue", "svelte", "astro"]`
 
+- `rainbow-html.colorMode`: *(String: `"tagNameHash"` | `"uniqueTagNames"` | `"depth"`)*  
+  Strategy for assigning colors to HTML tags:
+  - `"tagNameHash"` *(Default)*: Deterministically hashes tag names into a pool of vivid colors (e.g., all `<div>` tags share a distinct color while ensuring immediate surrounding elements have distinct colors).
+  - `"uniqueTagNames"`: Dynamically assigns unique vivid colors to each distinct tag type present in the document.
+  - `"depth"`: Alternating rainbow colors based on element nesting depth.
+
+- `rainbow-html.tagColors`: *(Object)*  
+  Manual color overrides for specific tag names (case-insensitive).  
+  *Example:* `{"div": "#ff5555", "span": "#50fa7b", "button": "#8be9fd"}`
+
+
 ## ⌨️ Commands
 
 - `Rainbow HTML: Refresh` (`rainbow-html.refresh`)  

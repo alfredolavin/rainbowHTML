@@ -44,6 +44,29 @@
             "astro"
           ],
           "description": "Additional file extensions (e.g., 'njk') or language IDs (e.g., 'nunjucks') to scan for HTML tags."
+        },
+        "rainbow-html.colorMode": {
+          "type": "string",
+          "enum": [
+            "tagNameHash",
+            "uniqueTagNames",
+            "depth"
+          ],
+          "enumDescriptions": [
+            "Calculate tag color by hashing the tag name into a pool of vivid colors.",
+            "Assign unique vivid colors to each distinct tag type in the document and immediate surroundings.",
+            "Alternating rainbow colors based on tag nesting depth (legacy mode)."
+          ],
+          "default": "tagNameHash",
+          "description": "Coloring strategy for HTML tags."
+        },
+        "rainbow-html.tagColors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Manual color overrides for specific tag names (e.g., {\"div\": \"#ff5555\", \"span\": \"#50fa7b\"}). Tag names are case-insensitive."
         }
       }
     },
