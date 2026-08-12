@@ -36,98 +36,139 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+// 12-color balanced rainbow palettes covering the full spectrum
 const DARK_PALETTE = [
-    '#ff5555', // Vivid Coral Red
-    '#ffb86c', // Vivid Peach Orange
-    '#f1fa8c', // Vivid Bright Yellow
-    '#50fa7b', // Vivid Neon Green
-    '#8be9fd', // Vivid Cyan / Light Blue
-    '#bd93f9', // Vivid Lavender Purple
-    '#ff79c6', // Vivid Hot Pink
-    '#00e5ff', // Vivid Electric Cyan
-    '#a6e22e', // Vivid Lime
-    '#ff922b', // Vivid Amber Orange
-    '#38d9a9', // Vivid Mint
-    '#e599f7' // Vivid Orchid
+    '#FF5370', // 0: Coral Red
+    '#FF9E64', // 1: Warm Amber Orange
+    '#FFD54F', // 2: Sunny Yellow / Gold
+    '#50FA7B', // 3: Neon Spring Green
+    '#20E3B2', // 4: Vivid Mint Emerald
+    '#00E5FF', // 5: Electric Cyan
+    '#38BDF8', // 6: Sky Blue
+    '#818CF8', // 7: Indigo Blue
+    '#BD93F9', // 8: Lavender Violet
+    '#F472B6', // 9: Vivid Pink
+    '#FF79C6', // 10: Hot Magenta
+    '#FBBF24' // 11: Golden Marigold
 ];
 const LIGHT_PALETTE = [
-    '#ff0055', // Vivid Bright Crimson
-    '#ff5700', // Vivid Bright Orange
-    '#e69100', // Vivid Bright Gold
-    '#00b843', // Vivid Bright Green
-    '#00b8d4', // Vivid Bright Teal
-    '#0088ff', // Vivid Electric Blue
-    '#7928ca', // Vivid Deep Violet
-    '#ff007f', // Vivid Hot Pink
-    '#0091ff', // Vivid Bright Sky Blue
-    '#00b97c', // Vivid Mint Emerald
-    '#ff3d00', // Vivid Bright Vermilion
-    '#d946ef' // Vivid Bright Fuchsia
+    '#E11D48', // 0: Vivid Crimson Red
+    '#EA580C', // 1: Vivid Bright Orange
+    '#CA8A04', // 2: Vivid Rich Gold
+    '#16A34A', // 3: Vivid Forest Green
+    '#0D9488', // 4: Vivid Teal
+    '#0284C7', // 5: Vivid Sky Blue
+    '#4F46E5', // 6: Vivid Royal Indigo
+    '#7C3AED', // 7: Vivid Violet Purple
+    '#9333EA', // 8: Vivid Deep Purple
+    '#DB2777', // 9: Vivid Hot Magenta
+    '#059669', // 10: Vivid Mint Emerald
+    '#D97706' // 11: Vivid Amber
 ];
-let activeEditor;
 const decorationCache = new Map();
 let updateTimer;
 function activate(context) {
-    activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor && shouldProcessDoc(activeEditor.document)) {
-        triggerUpdateDecorations();
-    }
+    // Paint decorations immediately on startup for all visible editors
+    updateAllVisibleEditors();
+    // Queue subsequent ticks in case editors are still mounting in VS Code
+    setTimeout(() => updateAllVisibleEditors(), 0);
+    setTimeout(() => updateAllVisibleEditors(), 150);
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor((editor) => {
-        activeEditor = editor;
-        if (activeEditor && shouldProcessDoc(activeEditor.document)) {
-            triggerUpdateDecorations();
+        if (editor && shouldProcessDoc(editor.document)) {
+            updateDecorationsForEditor(editor);
         }
-        else {
-            clearAllDecorations();
+    }), vscode.window.onDidChangeVisibleTextEditors((editors) => {
+        for (const editor of editors) {
+            if (shouldProcessDoc(editor.document)) {
+                updateDecorationsForEditor(editor);
+            }
         }
     }), vscode.workspace.onDidChangeTextDocument((event) => {
-        if (activeEditor && event.document === activeEditor.document && shouldProcessDoc(event.document)) {
-            triggerUpdateDecorations();
+        for (const editor of vscode.window.visibleTextEditors) {
+            if (editor.document === event.document && shouldProcessDoc(editor.document)) {
+                triggerUpdateDecorationsForEditor(editor);
+            }
         }
     }), vscode.workspace.onDidOpenTextDocument((doc) => {
-        if (activeEditor && doc === activeEditor.document && shouldProcessDoc(doc)) {
-            triggerUpdateDecorations();
+        for (const editor of vscode.window.visibleTextEditors) {
+            if (editor.document === doc && shouldProcessDoc(doc)) {
+                updateDecorationsForEditor(editor);
+            }
         }
-    }), vscode.workspace.onDidCloseTextDocument(() => {
-        clearAllDecorations();
     }), vscode.window.onDidChangeActiveColorTheme(() => {
         disposeAllDecorations();
-        if (activeEditor && shouldProcessDoc(activeEditor.document)) {
-            triggerUpdateDecorations();
-        }
+        updateAllVisibleEditors();
     }), vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('rainbow-html.additionalFileTypes') ||
             e.affectsConfiguration('rainbow-html.colorMode') ||
             e.affectsConfiguration('rainbow-html.tagColors') ||
             e.affectsConfiguration('rainbow-html.tagShadow')) {
             disposeAllDecorations();
-            if (activeEditor && shouldProcessDoc(activeEditor.document)) {
-                triggerUpdateDecorations();
-            }
-            else {
-                clearAllDecorations();
-            }
+            updateAllVisibleEditors();
         }
-    }), vscode.commands.registerCommand('rainbow-html.refresh', () => triggerUpdateDecorations()));
+    }), vscode.commands.registerCommand('rainbow-html.refresh', () => {
+        disposeAllDecorations();
+        updateAllVisibleEditors();
+    }));
 }
 function deactivate() {
     disposeAllDecorations();
 }
 function shouldProcessDoc(doc) {
-    if (doc.languageId === 'html' || doc.fileName.endsWith('.html') || doc.fileName.endsWith('.htm'))
+    if (!doc)
+        return false;
+    const lang = doc.languageId ? doc.languageId.toLowerCase() : '';
+    if (lang === 'html' ||
+        lang === 'htm' ||
+        lang === 'javascript' ||
+        lang === 'typescript' ||
+        lang === 'javascriptreact' ||
+        lang === 'typescriptreact' ||
+        lang === 'jsx' ||
+        lang === 'tsx' ||
+        lang === 'vue' ||
+        lang === 'svelte' ||
+        lang === 'astro' ||
+        lang === 'php' ||
+        lang === 'blade' ||
+        lang === 'handlebars' ||
+        lang === 'razor' ||
+        lang === 'xml' ||
+        lang === 'svg' ||
+        lang === 'nunjucks' ||
+        lang === 'njk' ||
+        lang === 'twig' ||
+        lang === 'jinja-html' ||
+        lang === 'django-html') {
         return true;
-    if (doc.languageId === 'javascript' ||
-        doc.languageId === 'typescript' ||
-        doc.languageId === 'javascriptreact' ||
-        doc.languageId === 'typescriptreact')
+    }
+    const fileName = doc.fileName ? doc.fileName.toLowerCase() : '';
+    if (fileName.endsWith('.html') ||
+        fileName.endsWith('.htm') ||
+        fileName.endsWith('.jsx') ||
+        fileName.endsWith('.tsx') ||
+        fileName.endsWith('.vue') ||
+        fileName.endsWith('.svelte') ||
+        fileName.endsWith('.astro') ||
+        fileName.endsWith('.php') ||
+        fileName.endsWith('.blade.php') ||
+        fileName.endsWith('.xml') ||
+        fileName.endsWith('.svg') ||
+        fileName.endsWith('.njk') ||
+        fileName.endsWith('.nunjucks') ||
+        fileName.endsWith('.twig') ||
+        fileName.endsWith('.hbs') ||
+        fileName.endsWith('.handlebars')) {
         return true;
+    }
     const config = vscode.workspace.getConfiguration('rainbow-html');
     const additionalTypes = config.get('additionalFileTypes') || [];
     for (const type of additionalTypes) {
-        if (doc.languageId === type)
+        const cleanType = type.toLowerCase().trim();
+        if (lang === cleanType)
             return true;
-        const suffix = type.startsWith('.') ? type : '.' + type;
-        if (doc.fileName.endsWith(suffix) || doc.fileName.endsWith(type))
+        const suffix = cleanType.startsWith('.') ? cleanType : '.' + cleanType;
+        if (fileName.endsWith(suffix))
             return true;
     }
     return false;
@@ -137,12 +178,17 @@ function getActivePalette() {
     const isLight = kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight;
     return isLight ? LIGHT_PALETTE : DARK_PALETTE;
 }
+// 32-bit FNV-1a hash with avalanche mixer to evenly disperse tag names across the palette
 function hashTagName(name) {
-    let hash = 5381;
+    let h = 2166136261;
     for (let i = 0; i < name.length; i++) {
-        hash = ((hash << 5) + hash) + name.charCodeAt(i);
+        h ^= name.charCodeAt(i);
+        h = Math.imul(h, 16777619);
     }
-    return Math.abs(hash);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0x5bd1e995);
+    h ^= h >>> 15;
+    return Math.abs(h);
 }
 function getManualOverrides() {
     const config = vscode.workspace.getConfiguration('rainbow-html');
@@ -155,7 +201,11 @@ function getManualOverrides() {
 }
 function getColorMode() {
     const config = vscode.workspace.getConfiguration('rainbow-html');
-    return config.get('colorMode') || 'tagNameHash';
+    const mode = config.get('colorMode') || 'rainbow';
+    if (mode === 'depth' || mode === 'tagNameHash' || mode === 'uniqueTagNames') {
+        return mode;
+    }
+    return 'rainbow';
 }
 function getTagShadow() {
     const config = vscode.workspace.getConfiguration('rainbow-html');
@@ -184,53 +234,43 @@ function getOrCreateDecorations(color) {
                 color: normalizedColor,
                 opacity: '1.0',
                 rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-            }),
-            nameRanges: [],
-            delimRanges: []
+            })
         };
         decorationCache.set(cacheKey, pair);
     }
     return pair;
 }
-function clearAllDecorations() {
-    if (!activeEditor)
-        return;
-    for (const pair of decorationCache.values()) {
-        pair.nameRanges = [];
-        pair.delimRanges = [];
-        activeEditor.setDecorations(pair.nameDecoration, []);
-        activeEditor.setDecorations(pair.delimDecoration, []);
-    }
-}
 function disposeAllDecorations() {
-    if (activeEditor) {
-        for (const pair of decorationCache.values()) {
-            activeEditor.setDecorations(pair.nameDecoration, []);
-            activeEditor.setDecorations(pair.delimDecoration, []);
-            pair.nameDecoration.dispose();
-            pair.delimDecoration.dispose();
-        }
+    for (const pair of decorationCache.values()) {
+        pair.nameDecoration.dispose();
+        pair.delimDecoration.dispose();
     }
     decorationCache.clear();
 }
-function triggerUpdateDecorations() {
-    if (updateTimer) {
-        clearTimeout(updateTimer);
+function updateAllVisibleEditors() {
+    for (const editor of vscode.window.visibleTextEditors) {
+        if (shouldProcessDoc(editor.document)) {
+            updateDecorationsForEditor(editor);
+        }
     }
-    updateTimer = setTimeout(updateDecorations, 100);
 }
-function updateDecorations() {
-    if (!activeEditor)
-        return;
-    const doc = activeEditor.document;
-    if (!shouldProcessDoc(doc)) {
-        clearAllDecorations();
-        return;
+const editorTimers = new WeakMap();
+function triggerUpdateDecorationsForEditor(editor) {
+    const existing = editorTimers.get(editor);
+    if (existing) {
+        clearTimeout(existing);
     }
-    // Reset ranges in existing cache
-    for (const pair of decorationCache.values()) {
-        pair.nameRanges = [];
-        pair.delimRanges = [];
+    const timer = setTimeout(() => {
+        if (vscode.window.visibleTextEditors.includes(editor)) {
+            updateDecorationsForEditor(editor);
+        }
+    }, 60);
+    editorTimers.set(editor, timer);
+}
+function updateDecorationsForEditor(editor) {
+    const doc = editor.document;
+    if (!shouldProcessDoc(doc)) {
+        return;
     }
     const text = doc.getText();
     const segments = getProcessableSegments(doc, text);
@@ -239,9 +279,20 @@ function updateDecorations() {
     const colorMode = getColorMode();
     // Document-wide map for uniqueTagNames mode
     const docTagColorMap = new Map();
-    // Lightweight scanner that pairs tags so opening/closing share the same color
+    // Ranges collected per color for this editor
+    const rangesByColor = new Map();
+    const getRanges = (colorHex) => {
+        const normalized = colorHex.toLowerCase();
+        let ranges = rangesByColor.get(normalized);
+        if (!ranges) {
+            ranges = { nameRanges: [], delimRanges: [] };
+            rangesByColor.set(normalized, ranges);
+        }
+        return ranges;
+    };
     const rawTextElements = new Set(['script', 'style']);
     const colorStack = [];
+    let rainbowCycleIndex = 0;
     for (const seg of segments) {
         let pos = seg.start;
         let inComment = false;
@@ -279,7 +330,7 @@ function updateDecorations() {
                 continue;
             }
             if (text.charCodeAt(pos) === 60 /* '<' */) {
-                const isTypeScript = doc.languageId === 'typescript' || doc.languageId === 'typescriptreact';
+                const isTypeScript = doc.languageId === 'typescript' || doc.languageId === 'typescriptreact' || doc.fileName.endsWith('.tsx') || doc.fileName.endsWith('.ts');
                 if (isTypeScript && pos > 0) {
                     const charBefore = text[pos - 1];
                     if (/[a-zA-Z0-9]/.test(charBefore)) {
@@ -308,7 +359,7 @@ function updateDecorations() {
                 const isVoid = isVoidElement(tagName);
                 const isSelfClosing = isSelfClosingSyntax || isVoid;
                 if (isClosing) {
-                    let matchedColor = resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap);
+                    let matchedColor;
                     for (let i = colorStack.length - 1; i >= 0; i--) {
                         if (colorStack[i].name === tagName) {
                             matchedColor = colorStack[i].color;
@@ -316,13 +367,17 @@ function updateDecorations() {
                             break;
                         }
                     }
-                    addTagPieces(doc, pos, tagText, matchedColor);
+                    if (!matchedColor) {
+                        matchedColor = resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap, rainbowCycleIndex);
+                    }
+                    addTagPieces(doc, pos, tagText, matchedColor, getRanges(matchedColor));
                     pos = gt + 1;
                     continue;
                 }
                 else {
-                    const assignedColor = resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap);
-                    addTagPieces(doc, pos, tagText, assignedColor);
+                    const assignedColor = resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap, rainbowCycleIndex);
+                    rainbowCycleIndex = (rainbowCycleIndex + 1) % palette.length;
+                    addTagPieces(doc, pos, tagText, assignedColor, getRanges(assignedColor));
                     if (!isSelfClosing) {
                         colorStack.push({ name: tagName, color: assignedColor });
                         if (rawTextElements.has(tagName)) {
@@ -331,7 +386,7 @@ function updateDecorations() {
                                 const closeGt = text.indexOf('>', closeIdx + 2);
                                 if (closeGt !== -1 && closeGt < seg.end) {
                                     const closeTagText = text.slice(closeIdx, closeGt + 1);
-                                    addTagPieces(doc, closeIdx, closeTagText, assignedColor);
+                                    addTagPieces(doc, closeIdx, closeTagText, assignedColor, getRanges(assignedColor));
                                     for (let i = colorStack.length - 1; i >= 0; i--) {
                                         if (colorStack[i].name === tagName) {
                                             colorStack.splice(i);
@@ -351,26 +406,31 @@ function updateDecorations() {
             pos++;
         }
     }
-    // Apply decorations
-    if (!activeEditor)
-        return;
-    for (const pair of decorationCache.values()) {
-        activeEditor.setDecorations(pair.nameDecoration, pair.nameRanges);
-        activeEditor.setDecorations(pair.delimDecoration, pair.delimRanges);
+    // Apply decoration ranges to this editor, clearing any unused cached types
+    for (const [colorKey, pair] of decorationCache.entries()) {
+        const rawColor = colorKey.split(':')[0];
+        const ranges = rangesByColor.get(rawColor);
+        editor.setDecorations(pair.nameDecoration, ranges ? ranges.nameRanges : []);
+        editor.setDecorations(pair.delimDecoration, ranges ? ranges.delimRanges : []);
+    }
+    // For any new colors in rangesByColor not yet in cache, register and apply them
+    for (const [rawColor, ranges] of rangesByColor.entries()) {
+        const pair = getOrCreateDecorations(rawColor);
+        editor.setDecorations(pair.nameDecoration, ranges.nameRanges);
+        editor.setDecorations(pair.delimDecoration, ranges.delimRanges);
     }
 }
-function resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap) {
-    // 1. Manual Override
+function resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMode, docTagColorMap, cycleIndex) {
+    // 1. Manual User Override
     if (manualOverrides[tagName]) {
         return manualOverrides[tagName];
     }
     const parentColor = colorStack.length > 0 ? colorStack[colorStack.length - 1].color : null;
-    // 2. Mode resolution
+    // 2. Mode Resolution
     if (colorMode === 'uniqueTagNames') {
         if (docTagColorMap.has(tagName)) {
             return docTagColorMap.get(tagName);
         }
-        // Pick unused color or fallback cycle
         let candidateIndex = docTagColorMap.size % palette.length;
         let color = palette[candidateIndex];
         if (color === parentColor && palette.length > 1) {
@@ -389,28 +449,36 @@ function resolveTagColor(tagName, colorStack, palette, manualOverrides, colorMod
         }
         return color;
     }
-    // Default: tagNameHash
-    let index = hashTagName(tagName) % palette.length;
-    let color = palette[index];
+    if (colorMode === 'tagNameHash') {
+        let index = hashTagName(tagName) % palette.length;
+        let color = palette[index];
+        if (color === parentColor && palette.length > 1) {
+            index = (index + 1) % palette.length;
+            color = palette[index];
+        }
+        return color;
+    }
+    // Default: 'rainbow' (consecutive cycle mode)
+    let idx = cycleIndex % palette.length;
+    let color = palette[idx];
     if (color === parentColor && palette.length > 1) {
-        index = (index + 1) % palette.length;
-        color = palette[index];
+        idx = (idx + 1) % palette.length;
+        color = palette[idx];
     }
     return color;
 }
-function addTagPieces(doc, startOffset, tagText, colorHex) {
+function addTagPieces(doc, startOffset, tagText, colorHex, ranges) {
     if (tagText.length === 0)
         return;
-    const pair = getOrCreateDecorations(colorHex);
     const pushDelim = (s, e) => {
         const start = doc.positionAt(startOffset + s);
         const end = doc.positionAt(startOffset + e);
-        pair.delimRanges.push(new vscode.Range(start, end));
+        ranges.delimRanges.push(new vscode.Range(start, end));
     };
     const pushName = (s, e) => {
         const start = doc.positionAt(startOffset + s);
         const end = doc.positionAt(startOffset + e);
-        pair.nameRanges.push(new vscode.Range(start, end));
+        ranges.nameRanges.push(new vscode.Range(start, end));
     };
     // '<'
     pushDelim(0, 1);
@@ -460,22 +528,59 @@ function isVoidElement(name) {
     }
 }
 function getProcessableSegments(doc, full) {
-    if (doc.languageId === 'html') {
+    const lang = doc.languageId ? doc.languageId.toLowerCase() : '';
+    if (lang === 'html' ||
+        lang === 'htm' ||
+        lang === 'vue' ||
+        lang === 'svelte' ||
+        lang === 'astro' ||
+        lang === 'php' ||
+        lang === 'blade' ||
+        lang === 'handlebars' ||
+        lang === 'razor' ||
+        lang === 'xml' ||
+        lang === 'svg' ||
+        lang === 'nunjucks' ||
+        lang === 'njk' ||
+        lang === 'twig' ||
+        lang === 'jinja-html' ||
+        lang === 'django-html' ||
+        lang === 'javascriptreact' ||
+        lang === 'typescriptreact' ||
+        lang === 'jsx' ||
+        lang === 'tsx') {
+        return [{ start: 0, end: full.length }];
+    }
+    const fileName = doc.fileName ? doc.fileName.toLowerCase() : '';
+    if (fileName.endsWith('.html') ||
+        fileName.endsWith('.htm') ||
+        fileName.endsWith('.jsx') ||
+        fileName.endsWith('.tsx') ||
+        fileName.endsWith('.vue') ||
+        fileName.endsWith('.svelte') ||
+        fileName.endsWith('.astro') ||
+        fileName.endsWith('.php') ||
+        fileName.endsWith('.blade.php') ||
+        fileName.endsWith('.xml') ||
+        fileName.endsWith('.svg') ||
+        fileName.endsWith('.njk') ||
+        fileName.endsWith('.nunjucks') ||
+        fileName.endsWith('.twig') ||
+        fileName.endsWith('.hbs') ||
+        fileName.endsWith('.handlebars')) {
         return [{ start: 0, end: full.length }];
     }
     const config = vscode.workspace.getConfiguration('rainbow-html');
     const additionalTypes = config.get('additionalFileTypes') || [];
     for (const type of additionalTypes) {
-        if (doc.languageId === type)
+        const cleanType = type.toLowerCase().trim();
+        if (lang === cleanType)
             return [{ start: 0, end: full.length }];
-        const suffix = type.startsWith('.') ? type : '.' + type;
-        if (doc.fileName.endsWith(suffix) || doc.fileName.endsWith(type))
+        const suffix = cleanType.startsWith('.') ? cleanType : '.' + cleanType;
+        if (fileName.endsWith(suffix))
             return [{ start: 0, end: full.length }];
     }
-    if (doc.languageId === 'javascriptreact' || doc.languageId === 'typescriptreact') {
-        // For JSX/TSX, process the entire document buffer
-        return [{ start: 0, end: full.length }];
-    }
+    // Plain JS / TS: scan for tagged html`...` templates
     const segments = [];
     let i = 0;
     while (i < full.length) {
@@ -485,7 +590,6 @@ function getProcessableSegments(doc, full) {
                 const end = scanBacktickLiteral(full, contentStart);
                 if (end !== -1) {
                     segments.push({ start: contentStart, end });
-                    // Collect nested html`...` inside ${ ... } expressions within this template
                     collectNestedHtmlTemplates(full, contentStart, end, segments);
                     i = end + 1;
                     continue;
@@ -497,24 +601,18 @@ function getProcessableSegments(doc, full) {
     return segments;
 }
 function isHtmlTagBeforeBacktick(full, backtickIndex) {
-    // Look backwards for an identifier ending with .?html before optional whitespace/comments
     let k = backtickIndex - 1;
-    // skip whitespace
     while (k >= 0 && /\s/.test(full[k]))
         k--;
-    // skip line comments
     if (k >= 1 && full[k - 1] === '/' && full[k] === '/') {
-        // move back to line start
         while (k >= 0 && full[k] !== '\n')
             k--;
     }
-    // read last identifier possibly after a dot chain
     let endWord = k;
     while (endWord >= 0 && /[A-Za-z0-9_$]/.test(full[endWord]))
         endWord--;
     let word = full.slice(endWord + 1, k + 1);
     if (word.length === 0 && full[endWord] === '.') {
-        // try previous identifiers in a dotted chain
         let p = endWord - 1;
         while (p >= 0 && /[A-Za-z0-9_$\.]/.test(full[p]))
             p--;
@@ -525,7 +623,6 @@ function isHtmlTagBeforeBacktick(full, backtickIndex) {
     return word === 'html';
 }
 function collectNestedHtmlTemplates(full, start, end, out) {
-    // Scan template content for ${ ... } expressions and within them for nested html`...`
     let j = start;
     while (j < end) {
         const next2 = full.slice(j, j + 2);
@@ -538,7 +635,6 @@ function collectNestedHtmlTemplates(full, start, end, out) {
             j = exprEnd;
             continue;
         }
-        // handle escaped backtick inside content
         if (full[j] === '\\' && j + 1 < end) {
             j += 2;
             continue;
@@ -555,7 +651,6 @@ function scanRangeForHtmlTemplates(full, start, end, out) {
                 const innerEnd = scanBacktickLiteral(full, innerStart);
                 if (innerEnd !== -1 && innerEnd <= full.length) {
                     out.push({ start: innerStart, end: innerEnd });
-                    // Recurse for nested html inside this template's expressions
                     collectNestedHtmlTemplates(full, innerStart, innerEnd, out);
                     k = innerEnd + 1;
                     continue;
@@ -566,14 +661,11 @@ function scanRangeForHtmlTemplates(full, start, end, out) {
     }
 }
 function findTagEnd(text, startPos, hardEnd) {
-    // Find '>' but treat `>` inside attribute values as text.
-    // Handle quotes ' and " and also template placeholders like ${ ... } inside attribute values.
-    // ALSO handle TSX expressions { ... } which might contain operators like > or strings.
     let i = startPos;
     let inSingle = false;
     let inDouble = false;
     let inBacktick = false;
-    let braceDepth = 0; // Track { } for TSX expressions
+    let braceDepth = 0;
     while (i < hardEnd) {
         const ch = text[i];
         const next2 = text.slice(i, i + 2);
@@ -591,7 +683,6 @@ function findTagEnd(text, startPos, hardEnd) {
             i++;
             continue;
         }
-        // Enter strings
         if (ch === "'") {
             inSingle = true;
             i++;
@@ -607,7 +698,6 @@ function findTagEnd(text, startPos, hardEnd) {
             i++;
             continue;
         }
-        // TSX expressions
         if (ch === '{') {
             braceDepth++;
             i++;
@@ -619,7 +709,6 @@ function findTagEnd(text, startPos, hardEnd) {
             i++;
             continue;
         }
-        // Handle template expressions ${...} if we are somehow scanning inside a backtick literal's tag attributes
         if (next2 === '${') {
             const res = scanTemplateExpr(text, i + 2, hardEnd);
             if (res === -1)
@@ -627,7 +716,6 @@ function findTagEnd(text, startPos, hardEnd) {
             i = res;
             continue;
         }
-        // End of tag
         if (ch === '>' && braceDepth === 0) {
             return i;
         }
@@ -636,21 +724,18 @@ function findTagEnd(text, startPos, hardEnd) {
     return -1;
 }
 function scanTemplateExpr(text, startPos, hardEnd) {
-    // We enter right after the `${`. We must stop right after the matching `}` of this expression.
     let i = startPos;
-    let braceDepth = 1; // one '{' from `${`
+    let braceDepth = 1;
     let inSingle = false;
     let inDouble = false;
     let inBacktick = false;
     while (i < hardEnd) {
         const ch = text[i];
         const next2 = text.slice(i, i + 2);
-        // Handle escapes in any string mode
         if ((inSingle || inDouble || inBacktick) && ch === '\\') {
             i += 2;
             continue;
         }
-        // Toggle string modes
         if (!inDouble && !inBacktick && ch === "'" && !inSingle) {
             inSingle = true;
             i++;
@@ -682,18 +767,15 @@ function scanTemplateExpr(text, startPos, hardEnd) {
             continue;
         }
         if (!(inSingle || inDouble || inBacktick)) {
-            // Handle comments
             if (next2 === '//') {
-                // Skip single-line comment
                 i += 2;
                 while (i < hardEnd && text[i] !== '\n')
                     i++;
                 if (i < hardEnd)
-                    i++; // skip the newline
+                    i++;
                 continue;
             }
             if (next2 === '/*') {
-                // Skip multi-line comment
                 i += 2;
                 while (i < hardEnd - 1) {
                     if (text.slice(i, i + 2) === '*/') {
@@ -727,7 +809,6 @@ function scanTemplateExpr(text, startPos, hardEnd) {
     return -1;
 }
 function scanBacktickLiteral(text, startPos) {
-    // startPos is first char after opening backtick. Return index of closing backtick.
     let i = startPos;
     let expr = 0;
     while (i < text.length) {
@@ -748,7 +829,6 @@ function scanBacktickLiteral(text, startPos) {
             i++;
         }
         else {
-            // inside ${...}
             if (next2 === '${') {
                 expr++;
                 i += 2;
@@ -759,7 +839,6 @@ function scanBacktickLiteral(text, startPos) {
                 i++;
                 continue;
             }
-            // handle string literals inside the JS expression
             if (ch === '"' || ch === "'" || ch === '`') {
                 const endStr = scanJsString(text, i);
                 i = endStr === -1 ? i + 1 : endStr;
@@ -802,61 +881,5 @@ function scanJsString(text, startPos) {
         i++;
     }
     return -1;
-}
-function extractProcessableText(doc) {
-    // For html documents, process the whole text
-    if (doc.languageId === 'html') {
-        return doc.getText();
-    }
-    // For JS/TS variants, extract html`...` template literal contents, skipping ${...}
-    const full = doc.getText();
-    let result = '';
-    let i = 0;
-    while (i < full.length) {
-        // Look for html` start
-        if (full.startsWith('html`', i)) {
-            i += 5; // move past html`
-            const start = i;
-            let buf = '';
-            let inExprDepth = 0;
-            while (i < full.length) {
-                const ch = full[i];
-                const next2 = full.slice(i, i + 2);
-                if (inExprDepth === 0 && ch === '`') {
-                    // end of template
-                    result += buf;
-                    i++; // consume closing backtick
-                    break;
-                }
-                if (inExprDepth === 0 && next2 === '${') {
-                    // enter expression; skip until matching }
-                    inExprDepth = 1;
-                    i += 2;
-                    // Skip expression content with rudimentary brace balancing
-                    let brace = 1;
-                    while (i < full.length && brace > 0) {
-                        const c = full[i];
-                        if (c === '{')
-                            brace++;
-                        else if (c === '}')
-                            brace--;
-                        i++;
-                    }
-                    continue;
-                }
-                // handle escaped backticks \`
-                if (ch === '\\' && i + 1 < full.length && full[i + 1] === '`') {
-                    buf += '`';
-                    i += 2;
-                    continue;
-                }
-                buf += ch;
-                i++;
-            }
-            continue;
-        }
-        i++;
-    }
-    return result;
 }
 //# sourceMappingURL=extension.js.map

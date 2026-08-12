@@ -17,6 +17,7 @@ yarn-error.log*
 !package.json
 !README.md
 !LICENSE*
+!licence.md
+!icon.png
 
 .mypublish
-

@@ -1,35 +1,91 @@
 {
   "name": "rainbow-html",
   "displayName": "Rainbow HTML",
-  "description": "Alternating rainbow colors for HTML tag delimiters and names to enhance complex nested HTML readability.",
-  "version": "0.0.8",
+  "description": "Vibrant alternating rainbow colors for HTML tag delimiters and names to enhance complex nested HTML readability.",
+  "version": "0.0.9",
   "license": "MIT",
-  "publisher": "wumbl3",
+  "author": {
+    "name": "Alfredo Lavin",
+    "email": "alfredolavin@gmail.com",
+    "url": "https://github.com/alfredolavin"
+  },
+  "publisher": "alfredolavin",
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/realwumbl3/rainbowHTML"
+    "url": "https://github.com/alfredolavin/rainbowHTML"
   },
+  "bugs": {
+    "url": "https://github.com/alfredolavin/rainbowHTML/issues"
+  },
+  "homepage": "https://github.com/alfredolavin/rainbowHTML#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Themes",
     "Other"
   ],
+  "keywords": [
+    "html",
+    "rainbow",
+    "color",
+    "highlighting",
+    "jsx",
+    "tsx",
+    "vue",
+    "svelte",
+    "astro",
+    "tags",
+    "delimiters"
+  ],
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:html",
     "onLanguage:javascript",
     "onLanguage:typescript",
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact",
     "onLanguage:jsx",
-    "onStartupFinished"
+    "onLanguage:tsx",
+    "onLanguage:vue",
+    "onLanguage:svelte",
+    "onLanguage:astro",
+    "onLanguage:php",
+    "onLanguage:blade",
+    "onLanguage:handlebars",
+    "onLanguage:razor",
+    "onLanguage:xml",
+    "onLanguage:svg",
+    "onLanguage:nunjucks",
+    "onLanguage:twig",
+    "onLanguage:jinja-html",
+    "onLanguage:django-html"
   ],
   "main": "dist/extension.js",
   "contributes": {
     "configuration": {
       "title": "Rainbow HTML",
       "properties": {
+        "rainbow-html.colorMode": {
+          "type": "string",
+          "enum": [
+            "rainbow",
+            "depth",
+            "tagNameHash",
+            "uniqueTagNames"
+          ],
+          "enumDescriptions": [
+            "Alternating rainbow colors cycling through nested and consecutive tags (recommended).",
+            "Rainbow colors based on tag nesting depth level.",
+            "Tag color calculated by hashing tag name into the rainbow palette.",
+            "Assign unique rainbow colors to each distinct tag type in the document."
+          ],
+          "default": "rainbow",
+          "description": "Coloring strategy for HTML tags."
+        },
         "rainbow-html.additionalFileTypes": {
           "type": "array",
           "items": {
@@ -41,24 +97,11 @@
             "php",
             "vue",
             "svelte",
-            "astro"
+            "astro",
+            "blade",
+            "twig"
           ],
-          "description": "Additional file extensions (e.g., 'njk') or language IDs (e.g., 'nunjucks') to scan for HTML tags."
-        },
-        "rainbow-html.colorMode": {
-          "type": "string",
-          "enum": [
-            "tagNameHash",
-            "uniqueTagNames",
-            "depth"
-          ],
-          "enumDescriptions": [
-            "Calculate tag color by hashing the tag name into a pool of vivid colors.",
-            "Assign unique vivid colors to each distinct tag type in the document and immediate surroundings.",
-            "Alternating rainbow colors based on tag nesting depth (legacy mode)."
-          ],
-          "default": "tagNameHash",
-          "description": "Coloring strategy for HTML tags."
+          "description": "Additional file extensions (e.g. 'njk', 'blade') or language IDs (e.g. 'nunjucks') to scan for HTML tags."
         },
         "rainbow-html.tagColors": {
           "type": "object",
@@ -78,7 +121,7 @@
     "commands": [
       {
         "command": "rainbow-html.refresh",
-        "title": "Rainbow HTML: Refresh"
+        "title": "Rainbow HTML: Refresh Highlighting"
       }
     ]
   },
