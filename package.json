@@ -2,7 +2,7 @@
   "name": "rainbow-html",
   "displayName": "Rainbow HTML",
   "description": "Vibrant alternating rainbow colors for HTML tag delimiters and names to enhance complex nested HTML readability.",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "license": "MIT",
   "author": {
     "name": "Alfredo Lavin",
@@ -118,6 +118,68 @@
         }
       }
     },
+    "colors": [
+      {
+        "id": "rainbowHtml.color0",
+        "description": "Rainbow HTML Color 0",
+        "defaults": { "dark": "#FF5370", "light": "#FF0033", "highContrast": "#FF5370", "highContrastLight": "#FF0033" }
+      },
+      {
+        "id": "rainbowHtml.color1",
+        "description": "Rainbow HTML Color 1",
+        "defaults": { "dark": "#FF9E64", "light": "#FF6600", "highContrast": "#FF9E64", "highContrastLight": "#FF6600" }
+      },
+      {
+        "id": "rainbowHtml.color2",
+        "description": "Rainbow HTML Color 2",
+        "defaults": { "dark": "#FFD54F", "light": "#D4A000", "highContrast": "#FFD54F", "highContrastLight": "#D4A000" }
+      },
+      {
+        "id": "rainbowHtml.color3",
+        "description": "Rainbow HTML Color 3",
+        "defaults": { "dark": "#50FA7B", "light": "#00B300", "highContrast": "#50FA7B", "highContrastLight": "#00B300" }
+      },
+      {
+        "id": "rainbowHtml.color4",
+        "description": "Rainbow HTML Color 4",
+        "defaults": { "dark": "#20E3B2", "light": "#00B399", "highContrast": "#20E3B2", "highContrastLight": "#00B399" }
+      },
+      {
+        "id": "rainbowHtml.color5",
+        "description": "Rainbow HTML Color 5",
+        "defaults": { "dark": "#00E5FF", "light": "#0099CC", "highContrast": "#00E5FF", "highContrastLight": "#0099CC" }
+      },
+      {
+        "id": "rainbowHtml.color6",
+        "description": "Rainbow HTML Color 6",
+        "defaults": { "dark": "#38BDF8", "light": "#0066FF", "highContrast": "#38BDF8", "highContrastLight": "#0066FF" }
+      },
+      {
+        "id": "rainbowHtml.color7",
+        "description": "Rainbow HTML Color 7",
+        "defaults": { "dark": "#818CF8", "light": "#6600FF", "highContrast": "#818CF8", "highContrastLight": "#6600FF" }
+      },
+      {
+        "id": "rainbowHtml.color8",
+        "description": "Rainbow HTML Color 8",
+        "defaults": { "dark": "#BD93F9", "light": "#9900FF", "highContrast": "#BD93F9", "highContrastLight": "#9900FF" }
+      },
+      {
+        "id": "rainbowHtml.color9",
+        "description": "Rainbow HTML Color 9",
+        "defaults": { "dark": "#F472B6", "light": "#FF0066", "highContrast": "#F472B6", "highContrastLight": "#FF0066" }
+      },
+      {
+        "id": "rainbowHtml.color10",
+        "description": "Rainbow HTML Color 10",
+        "defaults": { "dark": "#FF79C6", "light": "#CC0099", "highContrast": "#FF79C6", "highContrastLight": "#CC0099" }
+      },
+      {
+        "id": "rainbowHtml.color11",
+        "description": "Rainbow HTML Color 11",
+        "defaults": { "dark": "#FBBF24", "light": "#E68A00", "highContrast": "#FBBF24", "highContrastLight": "#E68A00" }
+      }
+    ],
     "commands": [
       {
         "command": "rainbow-html.refresh",

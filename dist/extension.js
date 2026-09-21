@@ -36,34 +36,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
-// 12-color balanced rainbow palettes covering the full spectrum
-const DARK_PALETTE = [
-    '#FF5370', // 0: Coral Red
-    '#FF9E64', // 1: Warm Amber Orange
-    '#FFD54F', // 2: Sunny Yellow / Gold
-    '#50FA7B', // 3: Neon Spring Green
-    '#20E3B2', // 4: Vivid Mint Emerald
-    '#00E5FF', // 5: Electric Cyan
-    '#38BDF8', // 6: Sky Blue
-    '#818CF8', // 7: Indigo Blue
-    '#BD93F9', // 8: Lavender Violet
-    '#F472B6', // 9: Vivid Pink
-    '#FF79C6', // 10: Hot Magenta
-    '#FBBF24' // 11: Golden Marigold
-];
-const LIGHT_PALETTE = [
-    '#E11D48', // 0: Vivid Crimson Red
-    '#EA580C', // 1: Vivid Bright Orange
-    '#CA8A04', // 2: Vivid Rich Gold
-    '#16A34A', // 3: Vivid Forest Green
-    '#0D9488', // 4: Vivid Teal
-    '#0284C7', // 5: Vivid Sky Blue
-    '#4F46E5', // 6: Vivid Royal Indigo
-    '#7C3AED', // 7: Vivid Violet Purple
-    '#9333EA', // 8: Vivid Deep Purple
-    '#DB2777', // 9: Vivid Hot Magenta
-    '#059669', // 10: Vivid Mint Emerald
-    '#D97706' // 11: Vivid Amber
+const PALETTE = [
+    'rainbowHtml.color0',
+    'rainbowHtml.color1',
+    'rainbowHtml.color2',
+    'rainbowHtml.color3',
+    'rainbowHtml.color4',
+    'rainbowHtml.color5',
+    'rainbowHtml.color6',
+    'rainbowHtml.color7',
+    'rainbowHtml.color8',
+    'rainbowHtml.color9',
+    'rainbowHtml.color10',
+    'rainbowHtml.color11'
 ];
 const decorationCache = new Map();
 let updateTimer;
@@ -171,12 +156,12 @@ function shouldProcessDoc(doc) {
         if (fileName.endsWith(suffix))
             return true;
     }
+    // Also process documents of any other language if they include HTML/XML or tagged template literals
+    const fullText = doc.getText();
+    if (/(?:html|svg|xml|lit)\s*`|\/\*\s*(?:html|xml|svg)\s*\*\/`|<template\b|```(?:html|xml|svg)/i.test(fullText)) {
+        return true;
+    }
     return false;
-}
-function getActivePalette() {
-    const kind = vscode.window.activeColorTheme.kind;
-    const isLight = kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight;
-    return isLight ? LIGHT_PALETTE : DARK_PALETTE;
 }
 // 32-bit FNV-1a hash with avalanche mixer to evenly disperse tag names across the palette
 function hashTagName(name) {
@@ -216,13 +201,15 @@ function getTagShadow() {
     return shadow;
 }
 function getOrCreateDecorations(color) {
-    const normalizedColor = color.toLowerCase();
+    const normalizedColor = color.startsWith('rainbowHtml.') ? color : color.toLowerCase();
     const shadow = getTagShadow();
     const cacheKey = shadow ? `${normalizedColor}:${shadow}` : normalizedColor;
     let pair = decorationCache.get(cacheKey);
     if (!pair) {
+        const isThemeColor = normalizedColor.startsWith('rainbowHtml.');
+        const colorValue = isThemeColor ? new vscode.ThemeColor(normalizedColor) : normalizedColor;
         const nameDecorationOptions = {
-            color: normalizedColor,
+            color: colorValue,
             rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
         };
         if (shadow) {
@@ -231,7 +218,7 @@ function getOrCreateDecorations(color) {
         pair = {
             nameDecoration: vscode.window.createTextEditorDecorationType(nameDecorationOptions),
             delimDecoration: vscode.window.createTextEditorDecorationType({
-                color: normalizedColor,
+                color: colorValue,
                 opacity: '1.0',
                 rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
             })
@@ -274,7 +261,7 @@ function updateDecorationsForEditor(editor) {
     }
     const text = doc.getText();
     const segments = getProcessableSegments(doc, text);
-    const palette = getActivePalette();
+    const palette = PALETTE;
     const manualOverrides = getManualOverrides();
     const colorMode = getColorMode();
     // Document-wide map for uniqueTagNames mode
@@ -282,7 +269,7 @@ function updateDecorationsForEditor(editor) {
     // Ranges collected per color for this editor
     const rangesByColor = new Map();
     const getRanges = (colorHex) => {
-        const normalized = colorHex.toLowerCase();
+        const normalized = colorHex.startsWith('rainbowHtml.') ? colorHex : colorHex.toLowerCase();
         let ranges = rangesByColor.get(normalized);
         if (!ranges) {
             ranges = { nameRanges: [], delimRanges: [] };
@@ -580,7 +567,7 @@ function getProcessableSegments(doc, full) {
         if (fileName.endsWith(suffix))
             return [{ start: 0, end: full.length }];
     }
-    // Plain JS / TS: scan for tagged html`...` templates
+    // Scan for tagged template literals in any language (html`...`, svg`...`, xml`...`, lit`...`, /* html */ `...`, /* xml */ `...`)
     const segments = [];
     let i = 0;
     while (i < full.length) {
@@ -598,29 +585,63 @@ function getProcessableSegments(doc, full) {
         }
         i++;
     }
+    // Markdown code blocks ```html ... ``` or ```xml ... ``` or ```svg ... ```
+    if (lang === 'markdown' || fileName.endsWith('.md')) {
+        const codeBlockRegex = /```(?:html|xml|svg|xhtml)\b([\s\S]*?)```/gi;
+        let cbm;
+        while ((cbm = codeBlockRegex.exec(full)) !== null) {
+            const blockContent = cbm[1];
+            const start = cbm.index + cbm[0].indexOf(blockContent);
+            segments.push({ start, end: start + blockContent.length });
+        }
+    }
+    // <template>...</template> blocks in any other file
+    const templateTagRegex = /<template\b[^>]*>([\s\S]*?)<\/template>/gi;
+    let ttm;
+    while ((ttm = templateTagRegex.exec(full)) !== null) {
+        const inner = ttm[1];
+        const start = ttm.index + ttm[0].indexOf(inner);
+        segments.push({ start, end: start + inner.length });
+    }
     return segments;
 }
 function isHtmlTagBeforeBacktick(full, backtickIndex) {
     let k = backtickIndex - 1;
     while (k >= 0 && /\s/.test(full[k]))
         k--;
+    // Check for comment like /* html */ or /* HTML */ or /* xml */ or /* svg */
+    if (k >= 1 && full[k - 1] === '*' && full[k] === '/') {
+        const commentStart = full.lastIndexOf('/*', k - 1);
+        if (commentStart !== -1) {
+            const commentContent = full.slice(commentStart + 2, k - 1).trim().toLowerCase();
+            if (['html', 'xml', 'svg', 'xhtml', 'htm', 'lit'].includes(commentContent)) {
+                return true;
+            }
+            k = commentStart - 1;
+            while (k >= 0 && /\s/.test(full[k]))
+                k--;
+        }
+    }
     if (k >= 1 && full[k - 1] === '/' && full[k] === '/') {
         while (k >= 0 && full[k] !== '\n')
+            k--;
+        while (k >= 0 && /\s/.test(full[k]))
             k--;
     }
     let endWord = k;
     while (endWord >= 0 && /[A-Za-z0-9_$]/.test(full[endWord]))
         endWord--;
-    let word = full.slice(endWord + 1, k + 1);
+    let word = full.slice(endWord + 1, k + 1).toLowerCase();
     if (word.length === 0 && full[endWord] === '.') {
         let p = endWord - 1;
         while (p >= 0 && /[A-Za-z0-9_$\.]/.test(full[p]))
             p--;
-        const chain = full.slice(p + 1, k + 1).replace(/\s+/g, '');
-        if (chain.endsWith('.html'))
-            word = 'html';
+        const chain = full.slice(p + 1, k + 1).replace(/\s+/g, '').toLowerCase();
+        if (chain.endsWith('.html') || chain.endsWith('.svg') || chain.endsWith('.xml') || chain.endsWith('.lit')) {
+            return true;
+        }
     }
-    return word === 'html';
+    return ['html', 'svg', 'xml', 'lit', 'xhtml', 'htm'].includes(word);
 }
 function collectNestedHtmlTemplates(full, start, end, out) {
     let j = start;
